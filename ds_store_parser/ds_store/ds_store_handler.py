@@ -1,9 +1,9 @@
-from ds_store import store as ds_store
+from ds_store_parser.ds_store import store as ds_store
 import datetime
-import binascii
+from binascii import hexlify
 import collections
 import struct
-from time import gmtime, strftime
+from time import strftime
 
 
 class DsStoreHandler(object):
@@ -21,7 +21,7 @@ class DsStoreHandler(object):
         Yields
             <DsStoreRecord>: The ds store entry record
         """
-        
+
         for ds_store_entry in sorted(self.ds_store):
             yield DsStoreRecord(ds_store_entry)
 
@@ -41,18 +41,16 @@ class DsStoreRecord(object):
         record_dict = collections.OrderedDict([
             ("filename", self.ds_store_entry.filename),
             ("type", self.ds_store_entry.type),
-            ("code", self.ds_store_entry.code),
+            ("code", (self.ds_store_entry.code).decode()),
             ("value", self.ds_store_entry.value),
         ])
 
         if hasattr(self.ds_store_entry.type, "__name__"):
             record_dict["type"] = self.ds_store_entry.type.__name__
-        
-        
-        if record_dict["type"] == "blob" and record_dict["code"].lower() =='modd':           
-            record_dict["value"] = binascii.hexlify(
-                record_dict["value"]
-            )
+
+
+        if record_dict["type"] == "blob" and record_dict["code"].lower() == 'modd':
+            record_dict["value"] = hexlify(record_dict["value"])
 
             a = record_dict["value"][:16]
 
@@ -61,12 +59,10 @@ class DsStoreRecord(object):
             parsed_dt = datetime.datetime.utcfromtimestamp(a + 978307200)
 
             record_dict["value"] = parsed_dt
-            
+
         elif record_dict["type"] == "blob":
-            record_dict["value"] = binascii.hexlify(
-                record_dict["value"]
-            )
-            
+            record_dict["value"] = hexlify(record_dict["value"])
+
         elif record_dict["type"] == 'dutc':
             epoch_dt = datetime.datetime(1904, 1, 1)
             parsed_dt = epoch_dt + datetime.timedelta(
