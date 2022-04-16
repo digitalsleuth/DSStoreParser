@@ -8,7 +8,7 @@ Usage
 ```
 usage: DSStoreParser.py [-h] -s SOURCE -o OUTDIR [-f]
 
-DSStoreParser CLI tool. v0.2.1
+DSStoreParser CLI tool. v1.0.0
 
 Search for .DS_Store files in the path provided and parse them.
 
@@ -100,7 +100,3 @@ These record types can be set without opening a folder.
 - phyS: Physical Size
 - ptbL: Trash Put Back Location
 - ptbN: Trash Put Back Name
-
-
-
-
