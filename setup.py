@@ -6,8 +6,8 @@ with open("README.md", encoding='utf8') as readme:
 
 setup(
     name="DSStoreParser",
-    version="1.0.0",
-    author="Nicole Ibrahim & Corey Forman",
+    version="1.1.0",
+    author="Nicole Ibrahim, Alastair Houghton, Corey Forman",
     license="Apache 2.0",
     url="https://github.com/digitalsleuth/DSStoreParser",
     description=("macOS .DS_Store Parser"),

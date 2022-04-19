@@ -16,43 +16,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
 # implied.  See the License for the specific language governing
 # permissions and limitations under the License.
-
 # Modified by: Nicole Ibrahim
-# Update for Python 3 by: Corey Forman
+# Updated for Python 3 by: Corey Forman
 
 
 import fnmatch
 import sys
 import os
 import argparse
-import datetime
+from datetime import datetime as dt
+import stat
 from time import strftime
 import unicodecsv as csv
 from ds_store_parser.ds_store import ds_store_handler
 from ds_store_parser.ds_store.store import codes as type_codes
 
 
-'''
-try:
-    from dfvfs.analyzer import analyzer
-    from dfvfs.lib import definitions
-    from dfvfs.path import factory as path_spec_factory
-    from dfvfs.volume import tsk_volume_system
-    from dfvfs.resolver import resolver
-    from dfvfs.lib import raw
-    from dfvfs.helpers import source_scanner
-    DFVFS_IMPORT = True
-    IMPORT_ERROR = None
-
-except ImportError as exp:
-    DFVFS_IMPORT = False
-    IMPORT_ERROR =("\n%s\n\
-        You have specified the source type as image but DFVFS \n\
-        is not installed and is required for image support. \n\
-        To install DFVFS please refer to \n\
-        http://www.hecfblog.com/2015/12/how-to-install-dfvfs-on-windows-without.html" % (exp))
-'''
-__VERSION__ = "1.0.0"
+__VERSION__ = "1.1.0"
 folder_access_report = None
 other_info_report = None
 all_records_ds_store_report = None
@@ -173,7 +153,6 @@ class RecordHandler(object):
 
     def write_record(self, record, ds_file, source, stat_dict, opts_check):
         global records_parsed
-        #if type(record) == dict:
         if isinstance(record, dict):
             record_dict = record
             record_dict["generated_path"] = f'EMPTY DS_STORE: {ds_file}'
@@ -192,7 +171,6 @@ class RecordHandler(object):
                     stat_result = self.get_stats(os.lstat(abs_path_to_rec_file))
                     if stat_result:
                         record_dict["file_exists"] = f'{str(stat_result)}'
-#                        record_dict["file_exists"] = ''.join(str(stat_result))
                 else:
                     record_dict["file_exists"] = "[NOT EXISTS]"
             if record_dict["code"] == "vstl":
@@ -212,12 +190,13 @@ class RecordHandler(object):
         record_dict["src_mod_time"] = stat_dict['src_mod_time']
         record_dict["src_create_time"] = stat_dict['src_birth_time']
         record_dict["src_size"] = stat_dict['src_size']
-
         record_dict["src_permissions"] = f'{stat_dict["src_perms"]}, '\
-                                         f'User: {str(stat_dict["src_uid"])},'\
+                                         f'User: {str(stat_dict["src_uid"])}, '\
                                          f'Group: {str(stat_dict["src_gid"])}'
         if 'Codec' in str(record_dict["type"]):
             record_dict["type"] = f'blob ({record_dict["type"]})'
+        else:
+            record_dict["type"] = f'{record_dict["type"].decode()}'
         check_code = record_dict["code"]
         record_dict["code"] = f'{record_dict["code"]}'\
                               f' ({self.update_descriptor(record_dict)})'
@@ -236,7 +215,7 @@ class RecordHandler(object):
         stat_dict = {}
         stat_dict['src_acc_time'] = f'{self.convert_time(stat_result.st_atime)} [UTC]'
         stat_dict['src_mod_time'] = f'{self.convert_time(stat_result.st_mtime)} [UTC]'
-        stat_dict['src_perms'] = self.perm_to_text(stat_result.st_mode)
+        stat_dict['src_perms'] = self.get_perms(stat_result.st_mode)
         stat_dict['src_size'] = stat_result.st_size
         stat_dict['src_uid'] = stat_result.st_uid
         stat_dict['src_gid'] = stat_result.st_gid
@@ -246,7 +225,6 @@ class RecordHandler(object):
         else:
             stat_dict['src_birth_time'] = f'{self.convert_time(stat_result.st_ctime)} [UTC]'
             stat_dict['src_metadata_change_time'] = f'{self.convert_time(stat_result.st_ctime)} [UTC]'
-            #stat_dict['src_metadata_change_time'] = ''
         return stat_dict
 
 
@@ -254,7 +232,7 @@ class RecordHandler(object):
         stat_dict = {}
         stat_dict['src_acc_time'] = f'{self.convert_time(stat_result.atime)} [UTC]'
         stat_dict['src_mod_time'] = f'{self.convert_time(stat_result.mtime)} [UTC]'
-        stat_dict['src_perms'] = self.perm_to_text(stat_result.mode)
+        stat_dict['src_perms'] = self.get_perms(stat_result.mode)
         stat_dict['src_size'] = stat_result.size
         stat_dict['src_uid'] = stat_result.uid
         stat_dict['src_gid'] = stat_result.gid
@@ -270,57 +248,13 @@ class RecordHandler(object):
 
 
     def convert_time(self, timestamp):
-        return str(datetime.datetime.utcfromtimestamp(timestamp))
+        return str(dt.utcfromtimestamp(timestamp))
 
 
-    def perm_to_text(self, perm):
-        '''
-        From https://gist.github.com/beugley/47b4812df0837fc90e783347faee2432
-        '''
-        perms = {
-            "0": "---",
-            "1": "--x",
-            "2": "-w-",
-            "3": "-wx",
-            "4": "r--",
-            "5": "r-x",
-            "6": "rw-",
-            "7": "rwx"
-            }
-        m_perm = perm
-        perm = oct(int(perm))
-        if len(perm) == 4:
-            first = perm[0]
-            perm = perm[1:]
-        else:
-            first = ""
-
-        try:
-            outperms = ""
-            for p in perm:
-                outperms += perms[p]
-        except KeyError as e:
-            outperms = perm
-
-        if first != "":
-            if first == '0':
-                pass
-            elif first == '1':
-                pass
-            elif first == '2':
-                if outperms[5] == 'x':
-                    outperms = f'{outperms[:5]}s{outperms[6:]}'
-                else:
-                    outperms = f'{outperms[:5]}S{outperms[6:]}'
-            elif first == '4':
-                if outperms[2] == 'x':
-                    outperms = f'{outperms[:2]}s{outperms[3:]}'
-                else:
-                    outperms = f'{outperms[:2]}S{outperms[3:]}'
-            else:
-                outperms = perm
-
-        return f"Perms: {str(m_perm)}/-{outperms}"
+    def get_perms(self, perm):
+        num_perm = perm
+        outperms = stat.filemode(perm)
+        return f"Perms: {str(num_perm)}/-{outperms}"
 
 
     def generate_fullpath(self, source, ds_file, record_filename):
@@ -382,23 +316,19 @@ def get_arguments():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description=(usage)
     )
-
     argument_parser.add_argument(
         '-s',
         '--source',
         dest='source',
         action="store",
-        ###type=commandline_arg,
         required=True,
         help='The source path to search recursively for .DS_Store files to parse. '
     )
-
     argument_parser.add_argument(
         '-o',
         '--out',
         dest='outdir',
         action="store",
-        ###type=commandline_arg,
         required=True,
         help='The destination folder for generated reports.'
     )
@@ -410,10 +340,6 @@ def main():
 
     arguments = get_arguments()
     options = arguments.parse_args()
-    '''
-    if os.path.isfile(options.source) and DFVFS_IMPORT is False:
-        options.error(IMPORT_ERROR)
-    '''
     s_path = []
     s_name = '*.ds_store*'
 
@@ -421,7 +347,6 @@ def main():
     opts_out = options.outdir
     opts_check = False
     timestr = strftime("%Y%m%d-%H%M%S")
-
     try:
         folder_access_report = open(
             os.path.join(opts_out, f'DS_Store-Folder_Access_Report-{timestr}.tsv'),
@@ -435,7 +360,6 @@ def main():
             os.path.join(opts_out, f'DS_Store-All_Parsed_Report-{timestr}.tsv'),
             'wb'
             )
-
     except Exception as exp:
         print(f'Unable to proceed. Error creating reports. Exceptions: {exp}')
         sys.exit(0)
@@ -445,39 +369,7 @@ def main():
         opts_source = opts_source[:-1]
 
     record_handler = RecordHandler(opts_check)
-    '''
-    if os.path.isfile(opts_source):
-        scan_path_spec = None
-        scanner = source_scanner.SourceScanner()
-        scan_context = source_scanner.SourceScannerContext()
-        scan_context.OpenSourcePath(opts_source)
-
-        scanner.Scan(
-            scan_context,
-            scan_path_spec=scan_path_spec
-        )
-
-        for file_system_path_spec, file_system_scan_node in scan_context._file_system_scan_nodes.items():
-            try:
-                location = file_system_path_spec.parent.location
-            except:
-                location = file_system_path_spec.location
-            print "  Processing Volume {}.\n".format(location)
-
-            root_path_spec = path_spec_factory.Factory.NewPathSpec(
-                file_system_path_spec.type_indicator,
-                parent=file_system_path_spec.parent,
-                location="/"
-            )
-
-            file_entry = resolver.Resolver.OpenFileEntry(
-                root_path_spec
-            )
-            if file_entry != None:
-                directory_recurse(file_system_path_spec, "/", record_handler, opts_source, opts_check)
-    '''
     for root, dirnames, filenames in os.walk(opts_source):
-        #for filename.lower() in fnmatch.filter(filenames.lower(), s_name):
         for filename in filenames:
             if fnmatch.fnmatch(filename.lower(), s_name):
                 ds_file = os.path.join(root, filename)
@@ -500,7 +392,6 @@ def directory_recurse(file_system_path_spec, parent_path, record_handler, opts_s
         path_spec
     )
     if file_entry is not None:
-    #if file_entry != None:
         for sub_file_entry in file_entry.sub_file_entries:
             if sub_file_entry.entry_type == 'directory':
                 dir_path = os.path.join(parent_path, sub_file_entry.name).replace("\\", "/")
@@ -573,11 +464,6 @@ def parse(ds_file, file_io, stat_dict, record_handler, source, opts_check):
         )
     else:
         pass
-
-
-#def commandline_arg(bytestring):
-#    unicode_string = bytestring
-#    return unicode_string
 
 
 if __name__ == '__main__':
